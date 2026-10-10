@@ -12,7 +12,7 @@ Este repositorio contiene la arquitectura de software, el diccionario de datos y
 ##  Componente Técnico: Simulador IoT (Fase 1)
 *Responsable del Desarrollo: Erick Ricardo Melara Ponce*
 
-El script de telemetría `Simulator_Nube_Verde.py` modela de forma granular el comportamiento de los sensores físicos embebidos en el campus, transmitiendo datos de manera síncrona hacia la nube.
+El script de telemetría `simulador_nube_verde.py` modela de forma granular el comportamiento de los sensores físicos embebidos en el campus, transmitiendo datos de manera síncrona hacia la nube.
 
 ### 1. Frecuencia y Almacenamiento Dinámico
 Acatando las directrices de diseño de la Fase 1, el simulador se encuentra configurado con una **frecuencia de simulación y registro de 60 segundos por dispositivo**. Esto evita la saturación de los canales HTTP y se alinea con las pautas de acumulación temporal requeridas por la cátedra.
