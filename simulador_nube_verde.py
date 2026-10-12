@@ -2,7 +2,7 @@
 Simulador IoT - Nube Verde (Fase 1)
 Genera lecturas granulares por dispositivo individual, calcula el consumo incremental
 en kWh según la fracción exacta de tiempo (60s) para evitar doble contabilidad,
-e integra los estados semánticos validados por el tutor.
+e integra los estados semánticos.
 """
 
 import sys
