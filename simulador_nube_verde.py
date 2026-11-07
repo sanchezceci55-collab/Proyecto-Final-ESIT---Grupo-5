@@ -1,8 +1,9 @@
 """
-Simulador IoT - Nube Verde (Fase 1)
-Genera lecturas granulares por dispositivo individual, calcula el consumo incremental
-en kWh según la fracción exacta de tiempo (60s) para evitar doble contabilidad,
-e integra los estados semánticos.
+Simulador IoT - Nube Verde
+Genera lecturas de consumo energético simuladas para varios puntos
+de monitoreo (labs, aulas, oficinas) y las envía a Firebase Realtime
+Database usando su API REST (no requiere el SDK de Firebase).
+Fase 2 Corregida con Autenticación Exitosa
 """
 
 import sys
@@ -14,7 +15,7 @@ try:
 except ModuleNotFoundError:
     print("[INFO] Falta la librería 'requests'. Instalándola automáticamente, espera un momento...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
-    print("[ÉXITO] Librería 'requests' instalada correctamente. Continuando con la lectura...\n")
+    print("[ÉXITO] Librería 'requests' instalada correctamente. Continuando...\n")
     import requests
 
 # Importación de librerías del núcleo de Python
@@ -27,80 +28,85 @@ from datetime import datetime, timezone
 # ---------------------------------------------------------------
 FIREBASE_URL = "https://nube-verde-default-rtdb.firebaseio.com"
 
-# Frecuencia inicial de simulación y registro recomendada por el tutor (60 segundos)
+# Frecuencia estricta de simulación (60 segundos)
 FRECUENCIA_SEGUNDOS = 60  
 
-# Inventario granular por dispositivo individual para mitigar doble contabilidad de circuitos
+# ---------------------------------------------------------------
+# INVENTARIO CORREGIDO Y VALIDADO POR SITIO (Semántica de Grupos)
+# Se incorporan los bloques horarios operativos institucionales reales
+# ---------------------------------------------------------------
 INVENTARIO_DISPOSITIVOS = {
     "Laboratorio_A": [
-        {"id": "lab_a_pc_01", "tipo": "Computadora de escritorio", "cantidad": 20, "potencia_nominal_w": 150},
-        {"id": "lab_a_clima_01", "tipo": "Aire acondicionado", "cantidad": 1, "potencia_nominal_w": 1500},
-        {"id": "lab_a_ilum_01", "tipo": "Luces LED", "cantidad": 10, "potencia_nominal_w": 18},
-        {"id": "lab_a_proy_01", "tipo": "Proyector", "cantidad": 1, "potencia_nominal_w": 250}
+        {"id": "lab_a_pc_grupo", "tipo": "Computadora de escritorio", "cantidad": 20, "potencia_nominal_w": 150, "hora_apertura": 8, "hora_cierre": 16},
+        {"id": "lab_a_clima_01", "tipo": "Aire acondicionado", "cantidad": 1, "potencia_nominal_w": 1500, "hora_apertura": 10, "hora_cierre": 14},
+        {"id": "lab_a_ilum_grupo", "tipo": "Luces LED", "cantidad": 10, "potencia_nominal_w": 18, "hora_apertura": 7, "hora_cierre": 17},
+        {"id": "lab_a_proy_01", "tipo": "Proyector", "cantidad": 1, "potencia_nominal_w": 250, "hora_apertura": 8, "hora_cierre": 14}
     ],
     "Laboratorio_B": [
-        {"id": "lab_b_pc_01", "tipo": "Computadora de escritorio", "cantidad": 16, "potencia_nominal_w": 150},
-        {"id": "lab_b_clima_01", "tipo": "Aire acondicionado", "cantidad": 1, "potencia_nominal_w": 1200},
-        {"id": "lab_b_ilum_01", "tipo": "Luces LED", "cantidad": 8, "potencia_nominal_w": 18},
-        {"id": "lab_b_proy_01", "tipo": "Proyector", "cantidad": 1, "potencia_nominal_w": 200}
+        {"id": "lab_b_pc_grupo", "tipo": "Computadora de escritorio", "cantidad": 16, "potencia_nominal_w": 150, "hora_apertura": 8, "hora_cierre": 15},
+        {"id": "lab_b_clima_01", "tipo": "Aire acondicionado", "cantidad": 1, "potencia_nominal_w": 1200, "hora_apertura": 11, "hora_cierre": 15},
+        {"id": "lab_b_ilum_grupo", "tipo": "Luces LED", "cantidad": 8, "potencia_nominal_w": 18, "hora_apertura": 7, "hora_cierre": 16},
+        {"id": "lab_b_proy_01", "tipo": "Proyector", "cantidad": 1, "potencia_nominal_w": 200, "hora_apertura": 9, "hora_cierre": 13}
     ],
     "Oficina_Administrativa": [
-        {"id": "oficina_pc_01", "tipo": "Computadora de escritorio", "cantidad": 6, "potencia_nominal_w": 120},
-        {"id": "oficina_imp_01", "tipo": "Impresora", "cantidad": 1, "potencia_nominal_w": 300},
-        {"id": "oficina_ilum_01", "tipo": "Luces LED", "cantidad": 6, "potencia_nominal_w": 18},
-        {"id": "oficina_clima_01", "tipo": "Aire acondicionado mini-split", "cantidad": 1, "potencia_nominal_w": 900}
+        {"id": "oficina_pc_grupo", "tipo": "Computadora de escritorio", "cantidad": 6, "potencia_nominal_w": 120, "hora_apertura": 8, "hora_cierre": 16},
+        {"id": "oficina_imp_01", "tipo": "Impresora", "cantidad": 1, "potencia_nominal_w": 300, "hora_apertura": 8, "hora_cierre": 16},
+        {"id": "oficina_ilum_grupo", "tipo": "Luces LED", "cantidad": 6, "potencia_nominal_w": 18, "hora_apertura": 7, "hora_cierre": 17},
+        {"id": "oficina_clima_01", "tipo": "Aire acondicionado mini-split", "cantidad": 1, "potencia_nominal_w": 900, "hora_apertura": 11, "hora_cierre": 14}
     ],
     "Aula_101": [
-        {"id": "aula_ilum_01", "tipo": "Luces LED", "cantidad": 8, "potencia_nominal_w": 18},
-        {"id": "aula_proy_01", "tipo": "Proyector", "cantidad": 1, "potencia_nominal_w": 250},
-        {"id": "aula_lap_docente", "tipo": "Laptop del docente", "cantidad": 1, "potencia_nominal_w": 65},
-        {"id": "aula_vent_01", "tipo": "Ventiladores de techo", "cantidad": 2, "potencia_nominal_w": 75}
+        {"id": "aula_ilum_grupo", "tipo": "Luces LED", "cantidad": 8, "potencia_nominal_w": 18, "hora_apertura": 7, "hora_cierre": 13},
+        {"id": "aula_proy_01", "tipo": "Proyector", "cantidad": 1, "potencia_nominal_w": 250, "hora_apertura": 8, "hora_cierre": 11},
+        {"id": "aula_lap_docente", "tipo": "Laptop del docente", "cantidad": 1, "potencia_nominal_w": 65, "hora_apertura": 7, "hora_cierre": 12},
+        {"id": "aula_vent_grupo", "tipo": "Ventiladores de techo", "cantidad": 2, "potencia_nominal_w": 75, "hora_apertura": 8, "hora_cierre": 12}
     ]
 }
 
 
 def generar_lectura_dispositivo(dispositivo: dict, zona: str, intervalo_segundos: int) -> dict:
     """
-    Genera métricas por dispositivo aplicando variaciones aleatorias normales de carga,
-    estados semánticos discretos y la ecuación física de integración de energía (kWh).
+    Genera métricas por grupo de dispositivos aplicando lógica de horarios fijos,
+    cero consumo absoluto en fallas/apagados y semántica de carga agregada documentada.
     """
-    # 1. Simulación estocástica del estado (93% encendido, 5% apagado, 2% falla)
-    probabilidad = random.random()
-    if probabilidad < 0.02:
-        estado = "falla"
-    elif probabilidad < 0.07:
+    # Obtener hora local actual para evaluar el rango operativo
+    hora_actual = datetime.now().hour
+    
+    # 1. EVALUACIÓN DE ESTADO BASADA EN HORARIOS DE INVENTARIO (Corrige control temporal aleatorio)
+    if not (dispositivo["hora_apertura"] <= hora_actual < dispositivo["hora_cierre"]):
         estado = "apagado"
     else:
-        estado = "encendido"
+        # Si está en horario operativo, existe un 3% de probabilidad estocástica de falla técnica
+        estado = "falla" if random.random() < 0.03 else "encendido"
 
-    # 2. Modelar la potencia estimada en Watts (W) basándose en la cantidad agregada del nodo
+    # 2. MODELADO OPERATIVO DE POTENCIA (Resolución de semántica agregada y base física)
     potencia_total_base = dispositivo["potencia_nominal_w"] * dispositivo["cantidad"]
     
     if estado == "encendido":
-        # Fluctuación aleatoria operativa normal del +/- 10%
-        variacion = random.uniform(-0.10, 0.10)
+        # Fluctuación operativa normal controlada del +/- 5%
+        variacion = random.uniform(-0.05, 0.05)
         potencia_estimada_w = round(potencia_total_base * (1 + variacion), 2)
     elif estado == "falla":
-        # Consumo parásito o cortocircuito de protección (15% de la carga base)
-        potencia_estimada_w = round(potencia_total_base * 0.15, 2)
+        # ¡CORRECCIÓN CRÍTICA!: En falla la potencia es estrictamente 0.0 W (Elimina el error del 15%)
+        potencia_estimada_w = 0.0
     else:
+        # En estado apagado el consumo es nulo
         potencia_estimada_w = 0.0
 
-    # 3. Integración Matemática de Energía en kWh para la ventana temporal exacta
-    # Fórmula: Energía (kWh) = Potencia (W) * Duración (Horas) / 1000
+    # 3. INTEGRACIÓN MATEMÁTICA DE ENERGÍA (kWh) EN VENTANAS RÍGIDAS DE TRANSMISIÓN
     duracion_horas = intervalo_segundos / 3600.0
     consumo_kwh = round((potencia_estimada_w * duracion_horas) / 1000.0, 6)
 
-    # Definición de marcas de tiempo del intervalo simulado
+    # Definición precisa de marcas de tiempo del intervalo
     ahora_utc = datetime.now(timezone.utc)
     timestamp_fin = ahora_utc.isoformat()
     timestamp_inicio = datetime.fromtimestamp(ahora_utc.timestamp() - intervalo_segundos, tz=timezone.utc).isoformat()
 
-    # Estructura limpia del Payload JSON alineada al Diccionario de la Fase 1
+    # Estructura limpia del Payload JSON incluyendo metadato de cantidad para evitar duplicidad analítica
     return {
         "id_dispositivo": dispositivo["id"],
         "zona": zona,
         "tipo": dispositivo["tipo"],
+        "cantidad_equipos": dispositivo["cantidad"],  # Define explícitamente que es una lectura agregada
         "estado": estado,
         "potencia_estimada_w": potencia_estimada_w,
         "consumo_kwh": consumo_kwh,
@@ -110,8 +116,10 @@ def generar_lectura_dispositivo(dispositivo: dict, zona: str, intervalo_segundos
 
 
 def enviar_a_firebase(lectura: dict) -> bool:
-    """Envía el JSON de un dispositivo individual a Firebase Realtime Database mediante POST."""
-    url = f"{FIREBASE_URL}/lecturas.json"
+    """Envía el JSON del grupo de dispositivos a Firebase Realtime Database mediante POST."""
+    # Token secreto integrado para solventar errores de acceso 401 Unauthorized
+    TOKEN_FIREBASE = "6zW9PaqQ8q4nvoqdVGAtOsx8lrjhlzF0D1KcyPwt"
+    url = f"{FIREBASE_URL}/lecturas.json?auth={TOKEN_FIREBASE}"
     try:
         response = requests.post(url, json=lectura, timeout=5)
         response.raise_for_status()
@@ -123,28 +131,33 @@ def enviar_a_firebase(lectura: dict) -> bool:
 
 def main():
     print("====================================================")
-    print("   Simulador IoT - Nube Verde ")
+    print("   Simulador IoT - Nube Verde (Fase 2 Corregida) ")
     print("====================================================")
     print(f"URL Nube: {FIREBASE_URL}")
-    print(f"Frecuencia configurada: Transmisión cada {FRECUENCIA_SEGUNDOS} segundos.")
-    print("Presiona Ctrl+C para detener de forma segura el envío.\n")
+    print(f"Frecuencia configurada: Ciclos estrictos cada {FRECUENCIA_SEGUNDOS} segundos.")
+    print("Presiona Ctrl+C para detener el proceso de forma segura.\n")
 
     while True:
-        # Iteración por cada zona y por cada tipo de dispositivo físico independiente
+        # Registramos el inicio exacto del ciclo para compensar desfases de red
+        tiempo_inicio_ciclo = time.time()
+        
         for zona, lista_dispositivos in INVENTARIO_DISPOSITIVOS.items():
-            print(f"📡 Procesando lectura de la zona: {zona}...")
+            print(f"📡 Procesando lecturas de la zona: {zona}...")
             for dispositivo in lista_dispositivos:
-                # Generar lectura sin solapamientos ni duplicidades conceptuales
                 payload = generar_lectura_dispositivo(dispositivo, zona, FRECUENCIA_SEGUNDOS)
-                
-                # Transmisión HTTP REST hacia la base de datos cloud
                 exito = enviar_a_firebase(payload)
                 status_msg = "ENVIADO" if exito else "ERROR"
                 
-                print(f"   ↳ Dispositivo: [{payload['id_dispositivo']}] | Potencia: {payload['potencia_estimada_w']} W | Energía: {payload['consumo_kwh']} kWh | Estado: {payload['estado']} -> [{status_msg}]")
+                print(f"   ↳ Grupo: [{payload['id_dispositivo']}] ({payload['cantidad_equipos']} uds) | Potencia: {payload['potencia_estimada_w']} W | Energía: {payload['consumo_kwh']} kWh | Estado: {payload['estado']} -> [{status_msg}]")
         
-        print(f"\n[ESPERA] Ciclo completado. Suspendiendo transmisión por {FRECUENCIA_SEGUNDOS} segundos...\n")
-        time.sleep(FRECUENCIA_SEGUNDOS)
+        # COMPENSACIÓN DINÁMICA DEL TIEMPO DE RED (Corrige desalineación temporal de sleep rígidos)
+        tiempo_procesamiento = time.time() - tiempo_inicio_ciclo
+        tiempo_espera_real = max(0.0, FRECUENCIA_SEGUNDOS - tiempo_procesamiento)
+        
+        print(f"\n[ESPERA] Envío completado en {round(tiempo_procesamiento, 2)}s.")
+        print(f"Duración del sleep ajustada a {round(tiempo_espera_real, 2)}s para mantener sincronía exacta.\n")
+        
+        time.sleep(tiempo_espera_real)
 
 
 if __name__ == "__main__":
