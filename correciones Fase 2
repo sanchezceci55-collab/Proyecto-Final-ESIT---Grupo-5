@@ -1,0 +1,56 @@
+# Simulador IoT — Proyecto Nube Verde (Grupo 5)  Correcciones Técnicas (Post-Evaluación Fase 2)
+
+Módulo de generación y transmisión de telemetría energética agregada por grupo de dispositivos para el campus de la Universidad Evangélica de El Salvador (UEES), desarrollado como parte de la **Fase 2** de la Estancia Profesional (ESIT).
+
+---
+
+## 🛡️ Arquitectura de Seguridad y Archivos de Configuración
+
+Con el objetivo de cumplir con las buenas prácticas de seguridad en la nube y proteger las credenciales de acceso a **Firebase Realtime Database**, el proyecto desacopla la configuración sensible del código fuente mediante tres archivos específicos:
+
+1. **`.env` (Archivo Privado Local — No versionado):** Almacena el token real y vigente de autenticación hacia Firebase (`FIREBASE_TOKEN`). Este archivo vive exclusivamente en el entorno local de ejecución y nunca se publica en GitHub.
+2. **`.env.example` (Plantilla Pública de Configuración):** Archivo de referencia incluido en el repositorio que documenta las variables de entorno requeridas para levantar el simulador, utilizando valores ficticios de relleno para guiar al evaluador o desarrollador sin exponer claves reales.
+3. **`.gitignore` (Regla de Exclusión de Control de Versiones):** Configurado para bloquear automáticamente la subida del archivo `.env` y directorios temporales (`__pycache__/`), mientras habilita de forma controlada la excepción (`!lecturas muestra.json`) para auditar el conjunto de datos de prueba.
+
+---
+
+## 📂 Estructura del Repositorio
+
+* `simulador_nube_verde.py`: Script principal en Python que modela las 4 zonas del campus (16 grupos físicos), calcula consumos en kWh y transmite lecturas cada 60 segundos con compensación dinámica de latencia.
+* `lecturas muestra.json`: Conjunto de datos depurado (126 registros diurnos) exportado desde Firebase tras la conciliación de horarios y validación de estado cero ante fallas.
+* `.env.example`: Plantilla de variables de entorno requeridas.
+* `.gitignore`: Filtros de seguridad para el control de versiones en Git.
+
+---
+
+## 🚀 Instrucciones de Ejecución Segura
+
+### 1. Ejecución Local (Python)
+1. Clonar este repositorio en su equipo local.
+2. Crear un archivo llamado `.env` en la raíz del proyecto tomando como base `.env.example`.
+3. Asignar su credencial válida de Firebase Realtime Database:
+   ```env
+   FIREBASE_TOKEN=su_token_secreto_aqui
+   ```
+4. Ejecutar el simulador (el script instalará automáticamente `requests` si no está presente):
+   ```bash
+   python simulador_nube_verde.py
+   ```
+
+### 2. Proyección de Despliegue en Contenedor Docker (Fase 3 / Azure)
+El script está preparado para ejecutarse en entornos contenerizados sin almacenar archivos `.env` en el servidor. Cuando se integre en contenedor, la credencial se inyectará directamente en memoria al iniciar el servicio:
+```bash
+docker run -d \
+  --name simulador-nube-verde \
+  -e FIREBASE_TOKEN="su_token_secreto_aqui" \
+  nube-verde-simulador
+```
+
+---
+
+## 📋 Registro de Correcciones Técnicas (Post-Evaluación Fase 2)
+
+En respuesta a la retroalimentación emitida por el Ingeniero **Carlos Guillermo Rodríguez**, se aplicaron las siguientes mejoras:
+* **Seguridad Cloud (C5):** Revocación del token anterior, rotación de credenciales, eliminación de literales secretos en `enviar_a_firebase()` y sanitización de logs de error HTTP para evitar la fuga de URLs autenticadas.
+* **Exactitud Horaria y Física (C2):** Implementación de zona horaria explícita `UTC-6 (America/El_Salvador)`, alineación de horarios operativos con las tablas de especificación y control físico estricto del límite nominal de **609 W** en el Aula 101.
+* **Trazabilidad e Idempotencia (C2/C3):** Incorporación del campo `id_ciclo` por ráfaga de envío y purga de registros históricos mixtos para entregar una muestra homogénea y reproducible en `lecturas muestra.json`.
